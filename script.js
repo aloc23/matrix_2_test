@@ -22,6 +22,11 @@ document.addEventListener('DOMContentLoaded', function() {
   let weekStartDates = [];
   let investmentWeekIndex = 0;
 
+  // --- ROI SUGGESTION STATE ---
+  let showSuggestions = false;
+  let suggestedRepayments = null;
+  let achievedSuggestedIRR = null;
+
   // --- Chart.js chart instances for destroy ---
   let mainChart = null;
   let roiPieChart = null;
@@ -915,16 +920,151 @@ document.addEventListener('DOMContentLoaded', function() {
     renderTornadoChart();
   }
 
+  // -------------------- ROI SUGGESTION LOGIC --------------------
+  function computeSuggestedRepayments({investment, targetIRR, filteredWeeks, investmentWeekIndex, openingBalance, cashflow}) {
+    if (!filteredWeeks || !filteredWeeks.length || targetIRR <= 0) {
+      return { suggestedRepayments: [], achievedIRR: null };
+    }
+
+    // Create array for suggested repayments covering all filtered weeks from investment point
+    const totalWeeks = filteredWeeks.length;
+    const suggestedArray = new Array(totalWeeks).fill(0);
+    
+    // Simple suggestion algorithm: distribute repayments to achieve target IRR
+    // Start from the investment week and spread repayments across remaining weeks
+    const investmentIndex = filteredWeeks.indexOf(investmentWeekIndex);
+    if (investmentIndex === -1) return { suggestedRepayments: suggestedArray, achievedIRR: null };
+    
+    const remainingWeeks = totalWeeks - investmentIndex - 1;
+    if (remainingWeeks <= 0) return { suggestedRepayments: suggestedArray, achievedIRR: null };
+    
+    // Calculate equal repayments to achieve target IRR
+    // Using simple approximation: Total return = investment * (1 + targetIRR)
+    const targetReturn = investment * (1 + targetIRR);
+    const weeklyRepayment = targetReturn / remainingWeeks;
+    
+    // Fill suggested repayments from investment week onwards
+    for (let i = investmentIndex + 1; i < totalWeeks; i++) {
+      suggestedArray[i] = weeklyRepayment;
+    }
+    
+    // Calculate achieved IRR for the suggested repayments
+    const cashflows = [-investment, ...suggestedArray.slice(investmentIndex + 1)];
+    const achievedIRR = calculateIRR(cashflows);
+    
+    return {
+      suggestedRepayments: suggestedArray,
+      achievedIRR: achievedIRR
+    };
+  }
+
+  function calculateIRR(cashflows) {
+    function npv(rate, cashflows) {
+      if (!cashflows.length) return 0;
+      return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
+    }
+    
+    let rate = 0.1, epsilon = 1e-6, maxIter = 100;
+    for (let iter=0; iter<maxIter; iter++) {
+      let npv0 = npv(rate, cashflows);
+      let npv1 = npv(rate+epsilon, cashflows);
+      let deriv = (npv1-npv0)/epsilon;
+      if (Math.abs(deriv) < 1e-10) break;
+      let newRate = rate - npv0/deriv;
+      if (!isFinite(newRate)) break;
+      if (Math.abs(newRate-rate) < 1e-7) return newRate;
+      rate = newRate;
+    }
+    return NaN;
+  }
+
+  // --- ROI TABLE RENDERING (SINGLE TABLE, OVERLAY SUGGESTIONS) ---
+  function renderRoiPaybackTable({actualRepayments, suggestedRepayments, filteredWeeks, weekLabels, weekStartDates, investmentWeekIndex}) {
+    if (!actualRepayments || !weekLabels) return '';
+    
+    const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
+    
+    let tableHtml = `
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Period</th>
+            <th>Date</th>
+            <th>Actual Repayment</th>
+            ${suggestedRepayments ? '<th>Suggested Repayment</th>' : ''}
+            <th>Cumulative</th>
+            <th>Discounted Cumulative</th>
+          </tr>
+        </thead>
+        <tbody>
+    `;
+    
+    let cum = 0, discCum = 0;
+    let sugCum = 0, sugDiscCum = 0;
+    
+    for (let i = 0; i < actualRepayments.length; i++) {
+      const actualRepayment = actualRepayments[i] || 0;
+      const suggestedRepayment = suggestedRepayments ? (suggestedRepayments[i] || 0) : 0;
+      
+      cum += actualRepayment;
+      if (actualRepayment > 0) {
+        discCum += actualRepayment / Math.pow(1 + discountRate / 100, i + 1);
+      }
+      
+      if (suggestedRepayments) {
+        sugCum += suggestedRepayment;
+        if (suggestedRepayment > 0) {
+          sugDiscCum += suggestedRepayment / Math.pow(1 + discountRate / 100, i + 1);
+        }
+      }
+      
+      const weekIndex = investmentWeekIndex + i;
+      const weekLabel = weekLabels[weekIndex] || (i + 1);
+      const weekDate = weekStartDates[weekIndex] ? weekStartDates[weekIndex].toLocaleDateString('en-GB') : '-';
+      
+      tableHtml += `
+        <tr ${suggestedRepayments ? 'style="background-color: rgba(33, 150, 243, 0.05);"' : ''}>
+          <td>${weekLabel}</td>
+          <td>${weekDate}</td>
+          <td>€${actualRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+          ${suggestedRepayments ? `<td style="color: #2196f3; font-weight: bold;">€${suggestedRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>` : ''}
+          <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+          <td>€${discCum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+        </tr>
+      `;
+    }
+    
+    tableHtml += `</tbody></table>`;
+    
+    // Add suggested summary if suggestions are shown
+    if (suggestedRepayments && achievedSuggestedIRR !== null) {
+      tableHtml += `
+        <div style="margin-top: 10px; padding: 10px; background-color: rgba(33, 150, 243, 0.1); border-radius: 4px;">
+          <strong>Suggested Repayments Summary:</strong><br>
+          Total Suggested: €${sugCum.toLocaleString(undefined, {maximumFractionDigits: 2})}<br>
+          Achieved IRR: ${isFinite(achievedSuggestedIRR) && !isNaN(achievedSuggestedIRR) ? (achievedSuggestedIRR * 100).toFixed(2) + '%' : 'n/a'}
+        </div>
+      `;
+    }
+    
+    return tableHtml;
+  }
+
   // -------------------- ROI/Payback Section --------------------
 function renderRoiSection() {
   const dropdown = document.getElementById('investmentWeek');
-  if (!dropdown || !weekStartDates.length) return;
+  if (!dropdown) return;
+  
   investmentWeekIndex = parseInt(dropdown.value, 10) || 0;
   const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
   const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
   const investmentWeek = investmentWeekIndex;
   const investmentDate = weekStartDates[investmentWeek] || null;
 
+  // Handle case when no week mapping is available - use default weeks
+  let actualWeekLabels = weekLabels && weekLabels.length > 0 ? weekLabels : Array.from({length: 52}, (_, i) => `Week ${i + 1}`);
+  let actualWeekStartDates = weekStartDates && weekStartDates.length > 0 ? weekStartDates : Array.from({length: 52}, (_, i) => new Date(2025, 0, 1 + i * 7));
+  
   const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
   const repayments = repaymentsFull.slice(investmentWeek);
 
@@ -933,7 +1073,7 @@ function renderRoiSection() {
   let cashflowDates = [investmentDate];
   for (let i = 1; i < cashflows.length; i++) {
     let idx = investmentWeek + i;
-    cashflowDates[i] = weekStartDates[idx] || null;
+    cashflowDates[i] = actualWeekStartDates[idx] || null;
   }
 
   function npv(rate, cashflows) {
@@ -975,43 +1115,27 @@ function renderRoiSection() {
     if (payback === null && discCum >= investment) payback = i;
   }
 
-  let tableHtml = `
-    <table class="table table-sm">
-      <thead>
-        <tr>
-          <th>Period</th>
-          <th>Date</th>
-          <th>Repayment</th>
-          <th>Cumulative</th>
-          <th>Discounted Cumulative</th>
-        </tr>
-      </thead>
-      <tbody>
-  `;
-  let cum = 0, discCum2 = 0;
-  for (let i = 0; i < repayments.length; i++) {
-    cum += repayments[i];
-    // Discounted cumulative only increases if repayment > 0
-    if (repayments[i] > 0) {
-      discCum2 += repayments[i] / Math.pow(1 + discountRate / 100, i + 1);
-    }
-    tableHtml += `
-      <tr>
-        <td>${weekLabels[investmentWeek + i] || (i + 1)}</td>
-        <td>${weekStartDates[investmentWeek + i] ? weekStartDates[investmentWeek + i].toLocaleDateString('en-GB') : '-'}</td>
-        <td>€${repayments[i].toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        <td>€${discCum2.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-      </tr>
-    `;
-  }
-  tableHtml += `</tbody></table>`;
+  // Instead of inline table generation, use renderRoiPaybackTable
+  const filteredWeeks = getFilteredWeekIndices ? getFilteredWeekIndices() : Array.from({length: actualWeekLabels.length}, (_, i) => i);
+  const tableHtml = renderRoiPaybackTable({
+    actualRepayments: repayments,
+    suggestedRepayments: showSuggestions ? suggestedRepayments : null,
+    filteredWeeks,
+    weekLabels: actualWeekLabels,
+    weekStartDates: actualWeekStartDates,
+    investmentWeekIndex: investmentWeek
+  });
 
   let summary = `<b>Total Investment:</b> €${investment.toLocaleString()}<br>
     <b>Total Repayments:</b> €${repayments.reduce((a, b) => a + b, 0).toLocaleString()}<br>
     <b>NPV (${discountRate}%):</b> ${typeof npvVal === "number" ? "€" + npvVal.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "n/a"}<br>
     <b>IRR:</b> ${isFinite(irrVal) && !isNaN(irrVal) ? (irrVal * 100).toFixed(2) + '%' : 'n/a'}<br>
     <b>Discounted Payback (periods):</b> ${payback ?? 'n/a'}`;
+
+  // Show achievedSuggestedIRR if present
+  if (showSuggestions && achievedSuggestedIRR !== null && isFinite(achievedSuggestedIRR)) {
+    summary += `<br><b>Suggested IRR:</b> ${(achievedSuggestedIRR * 100).toFixed(2)}%`;
+  }
 
   let badge = '';
   if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
@@ -1124,13 +1248,68 @@ function renderRoiCharts(investment, repayments) {
 }
 
 // --- ROI input events ---
-document.getElementById('roiInvestmentInput').addEventListener('input', renderRoiSection);
-document.getElementById('roiInterestInput').addEventListener('input', renderRoiSection);
-document.getElementById('refreshRoiBtn').addEventListener('click', renderRoiSection);
-document.getElementById('investmentWeek').addEventListener('change', renderRoiSection);
+document.getElementById('roiInvestmentInput').addEventListener('input', function() {
+  clearRoiSuggestions();
+  renderRoiSection();
+});
+document.getElementById('roiInterestInput').addEventListener('input', function() {
+  clearRoiSuggestions();
+  renderRoiSection();
+});
+document.getElementById('refreshRoiBtn').addEventListener('click', function() {
+  clearRoiSuggestions();
+  renderRoiSection();
+});
+document.getElementById('investmentWeek').addEventListener('change', function() {
+  clearRoiSuggestions();
+  renderRoiSection();
+});
+
+// --- SUGGESTION BUTTON EVENT ---
+document.getElementById('showSuggestedRepaymentsBtn').addEventListener('click', function() {
+  if (!showSuggestions) {
+    // Generate suggestions
+    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+    const targetIRR = 0.20; // Default 20% target IRR
+    const filteredWeeks = getFilteredWeekIndices ? getFilteredWeekIndices() : Array.from({length: 52}, (_, i) => i);
+    const incomeArr = getIncomeArr ? getIncomeArr() : [];
+    const expenditureArr = getExpenditureArr ? getExpenditureArr() : [];
+    const repaymentArr = getRepaymentArr ? getRepaymentArr() : [];
+    const cashflow = {income: incomeArr, expenditure: expenditureArr, repayments: repaymentArr};
+    
+    const result = computeSuggestedRepayments({
+      investment,
+      targetIRR,
+      filteredWeeks,
+      investmentWeekIndex,
+      openingBalance,
+      cashflow
+    });
+    
+    suggestedRepayments = result.suggestedRepayments;
+    achievedSuggestedIRR = result.achievedIRR;
+    showSuggestions = true;
+    this.textContent = 'Hide Suggested Repayments';
+  } else {
+    // Hide suggestions
+    clearRoiSuggestions();
+    this.textContent = 'Show Suggested Repayments';
+  }
+  renderRoiSection();
+});
+
+// --- CLEAR SUGGESTIONS WHEN DATA CHANGES ---
+function clearRoiSuggestions() {
+  showSuggestions = false;
+  suggestedRepayments = null;
+  achievedSuggestedIRR = null;
+  const btn = document.getElementById('showSuggestedRepaymentsBtn');
+  if (btn) btn.textContent = 'Show Suggested Repayments';
+}
 
   // -------------------- Update All Tabs --------------------
   function updateAllTabs() {
+    clearRoiSuggestions(); // Clear suggestions when data changes
     renderRepaymentRows();
     updateLoanSummary();
     updateChartAndSummary();
