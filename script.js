@@ -378,7 +378,12 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function getFilteredWeekIndices() {
-    return weekCheckboxStates.map((checked, idx) => checked ? idx : null).filter(idx => idx !== null);
+    if (weekCheckboxStates && weekCheckboxStates.length > 0) {
+      return weekCheckboxStates.map((checked, idx) => checked ? idx : null).filter(idx => idx !== null);
+    } else {
+      // When no mapping is configured, return all week indices up to 52 weeks
+      return Array.from({length: 52}, (_, i) => i);
+    }
   }
 
   // -------------------- Calculation Helpers --------------------
@@ -417,11 +422,13 @@ document.addEventListener('DOMContentLoaded', function() {
     return arr;
   }
   function getRepaymentArr() {
-    if (!mappingConfigured || !weekLabels.length) return [];
-    let arr = Array(weekLabels.length).fill(0);
+    // If no mapping is configured, use default week labels for repayment calculations
+    let actualWeekLabels = weekLabels && weekLabels.length > 0 ? weekLabels : Array.from({length: 52}, (_, i) => `Week ${i + 1}`);
+    let arr = Array(actualWeekLabels.length).fill(0);
+    
     repaymentRows.forEach(r => {
       if (r.type === "week") {
-        let weekIdx = weekLabels.indexOf(r.week);
+        let weekIdx = actualWeekLabels.indexOf(r.week);
         if (weekIdx === -1) weekIdx = 0;
         arr[weekIdx] += r.amount;
       } else {
@@ -440,7 +447,14 @@ document.addEventListener('DOMContentLoaded', function() {
         if (r.frequency === "one-off") { arr[0] += r.amount; }
       }
     });
-    return getFilteredWeekIndices().map(idx => arr[idx]);
+    
+    // If mapping is configured, return filtered results. Otherwise, return all results.
+    if (mappingConfigured && weekLabels.length > 0) {
+      return getFilteredWeekIndices().map(idx => arr[idx]);
+    } else {
+      // Return all weeks when no mapping is configured
+      return arr;
+    }
   }
   function getNetProfitArr(incomeArr, expenditureArr, repaymentArr) {
     return incomeArr.map((inc, i) => (inc || 0) - (expenditureArr[i] || 0) - (repaymentArr[i] || 0));
