@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MATRIX</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- External libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:400,700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="header">
+    <img src="mayweather-logo.png" alt="Mayweather Limited Logo" class="logo">
+    <h1>MATRIX</h1>
+    <h2 class="header-subtitle">Mayweather Analytics & Tracking for ROI, Investments, and Execution</h2>
+  </div>
+  <div class="container">
+    <nav class="tabs" role="tablist">
+      <button data-tab="main" class="active">Analysis & Mapping</button>
+      <button data-tab="pnl">Profit & Loss</button>
+      <button data-tab="roi">ROI</button>
+      <button data-tab="summary">Summary</button>
+    </nav>
+    <section id="main" class="tab-content active">
+      <h2>Analysis & Mapping</h2>
+      <div class="subtabs" role="tablist">
+        <button data-subtab="repayment" class="active">Repayment Sensitivity Analysis</button>
+        <button data-subtab="mapping">Spreadsheet Mapping</button>
+        <button data-subtab="charts">Cashflow Charts & Reports</button>
+        <button data-subtab="settings">Tool Settings</button>
+      </div>
+      <div id="subtab-repayment" class="subtab-panel active">
+        <div id="loan-summary" style="display:flex; gap:2em; align-items:center; margin-bottom:12px;">
+          <label>Outstanding Loan: <input type="number" id="loanOutstandingInput" style="width:120px;"></label>
+          <div id="totalRepaidBox">Total Repaid: €0</div>
+          <div id="remainingBox">Remaining: €0</div>
+        </div>
+        <h3>Repayment Sensitivity Analysis</h3>
+        <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;">
+          <label><input type="radio" name="repaymentType" value="week" checked> Specific Week</label>
+          <select id="weekSelect"></select>
+          <label><input type="radio" name="repaymentType" value="frequency"> Frequency</label>
+          <select id="repaymentFrequency" disabled>
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="one-off">One-off</option>
+          </select>
+          <input type="number" id="repaymentAmount" placeholder="Repayment €" style="width:120px;">
+          <button type="submit">Add Repayment</button>
+        </form>
+        <div id="repaymentRows" style="margin-top:18px;"></div>
+        <div id="repaymentSensitivityResults" style="margin-top:24px;"></div>
+      </div>
+      <div id="subtab-mapping" class="subtab-panel">
+        <h3>Spreadsheet Mapping</h3>
+        <input type="file" id="spreadsheetUpload" accept=".xlsx,.xls,.csv">
+        <div id="mappingPanel"></div>
+      </div>
+      <div id="subtab-charts" class="subtab-panel">
+        <h3>Cashflow Charts & Reports</h3>
+        <div class="chart-wrapper">
+          <canvas id="mainChart" height="180"></canvas>
+        </div>
+        <div id="mainChartSummary"></div>
+        <div id="mainChartNoData" style="display:none; color:#c00; margin-top:12px;">No data to display. Please map and filter your weeks.</div>
+      </div>
+      <div id="subtab-settings" class="subtab-panel">
+        <h3>Tool Settings</h3>
+        <label>Currency: <select id="settingsCurrency">
+          <option value="EUR">EUR (€)</option>
+          <option value="USD">USD ($)</option>
+          <option value="GBP">GBP (£)</option>
+        </select></label>
+        <label>Default Chart Type: <select id="settingsChartType">
+          <option value="line">Line</option>
+          <option value="bar">Bar</option>
+          <option value="pie">Pie</option>
+        </select></label>
+      </div>
+    </section>
+    <section id="pnl" class="tab-content">
+      <h2>Profit &amp; Loss Statement</h2>
+      <div id="pnlSummary"></div>
+      <div class="collapsible-table-section">
+        <button class="collapsible-header" type="button">
+          <span class="caret">&#9660;</span> Weekly Breakdown
+        </button>
+        <div class="collapsible-content active">
+          <div class="scroll-x">
+            <table id="pnlWeeklyBreakdown">
+              <thead>
+                <tr>
+                  <th>Week</th>
+                  <th>Income</th>
+                  <th>Expenditure</th>
+                  <th>Repayment</th>
+                  <th>Net Profit</th>
+                  <th>Rolling Bank Balance</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="collapsible-table-section">
+        <button class="collapsible-header" type="button">
+          <span class="caret">&#9660;</span> Monthly Breakdown (summary)
+        </button>
+        <div class="collapsible-content">
+          <table id="pnlMonthlyBreakdown">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Income</th>
+                <th>Expenditure</th>
+                <th>Net Profit</th>
+                <th>Repayment</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="collapsible-table-section">
+        <button class="collapsible-header" type="button">
+          <span class="caret">&#9660;</span> Cash Flow Table
+        </button>
+        <div class="collapsible-content active">
+          <table id="pnlCashFlow">
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Opening</th>
+                <th>Inflow</th>
+                <th>Outflow</th>
+                <th>Closing</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section id="roi" class="tab-content">
+      <h2>ROI &amp; Payback</h2>
+      <div class="roi-input-bar" style="display:flex; gap:1em; align-items:center; margin-bottom:1em;">
+        <label for="investmentWeek"><b>Investment Week:</b></label>
+        <select id="investmentWeek"></select>
+
+        <label for="roiInvestmentInput"><b>Total Investment:</b></label>
+        <input type="number" id="roiInvestmentInput" value="300000" style="width:120px; margin-right:1em;">
+
+        <label for="roiInterestInput"><b>Interest Rate (%):</b></label>
+        <input type="number" id="roiInterestInput" value="20" style="width:70px; margin-right:1em;">
+
+        <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
+      </div>
+      <div id="roiSummary" style="margin-bottom:1em;"></div>
+      <div style="display:flex; gap:2em; flex-wrap:wrap;">
+        <div style="flex:2;">
+          <h4>Repayment &amp; Payback Table</h4>
+          <div id="roiPaybackTableWrap"></div>
+        </div>
+        <div style="flex:1; min-width:340px;">
+          <h4>ROI Performance Chart</h4>
+          <canvas id="roiLineChart" style="min-height:300px; width:100%; margin-bottom:1em;"></canvas>
+          <canvas id="roiPieChart" style="min-height:200px; width:100%;"></canvas>
+        </div>
+      </div>
+    </section>
+    <section id="summary" class="tab-content">
+      <h2>Summary Report</h2>
+      <div class="kpi-cards">
+        <div class="kpi-card">
+          <div class="kpi-label">Total Income</div>
+          <div class="kpi-value" id="kpiTotalIncome">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Expenditure</div>
+          <div class="kpi-value" id="kpiTotalExpenditure">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Repayments</div>
+          <div class="kpi-value" id="kpiTotalRepayments">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Final Bank Balance</div>
+          <div class="kpi-value" id="kpiFinalBank">--</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Lowest Bank Balance</div>
+          <div class="kpi-value" id="kpiLowestBank">--</div>
+        </div>
+      </div>
+      <div id="summaryKeyFinancials"></div>
+      <div class="summary-section">
+        <h3>Top Contributors (Tornado Chart)</h3>
+        <canvas id="tornadoChart" style="min-height:300px; width:100%;"></canvas>
+      </div>
+      <div class="collapsible-table-section">
+        <button class="collapsible-header" type="button">
+          <span class="caret">&#9660;</span> Summary Chart
+        </button>
+        <div class="collapsible-content active">
+          <canvas id="summaryChart" height="150"></canvas>
+        </div>
+      </div>
+      <button id="exportPDFBtn">Export PDF</button>
+      <button id="exportExcelBtn">Export Excel</button>
+    </section>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
