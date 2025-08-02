@@ -26,6 +26,11 @@ document.addEventListener('DOMContentLoaded', function() {
   let showSuggestions = false;
   let suggestedRepayments = null;
   let achievedSuggestedIRR = null;
+  
+  // --- TARGET IRR/NPV SETTINGS ---
+  let targetIRR = 0.20; // Default 20%
+  let installmentCount = 12; // Default 12 installments
+  let liveUpdateEnabled = true;
 
   // --- Chart.js chart instances for destroy ---
   let mainChart = null;
@@ -75,6 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   setupTabs();
+  setupTargetIrrModal();
 
   // -------------------- Spreadsheet Upload & Mapping --------------------
   function setupSpreadsheetUpload() {
@@ -920,7 +926,223 @@ document.addEventListener('DOMContentLoaded', function() {
     renderTornadoChart();
   }
 
-  // -------------------- ROI SUGGESTION LOGIC --------------------
+  // -------------------- TARGET IRR/NPV MODAL CONTROLS --------------------
+  function setupTargetIrrModal() {
+    const modal = document.getElementById('targetIrrModal');
+    const editBtn = document.getElementById('editTargetIrrBtn');
+    const closeBtn = document.getElementById('closeIrrModal');
+    const applyBtn = document.getElementById('applyIrrSettings');
+    const cancelBtn = document.getElementById('cancelIrrSettings');
+    const slider = document.getElementById('targetIrrSlider');
+    const sliderValue = document.getElementById('targetIrrValue');
+    const installmentInput = document.getElementById('installmentCountInput');
+    const liveUpdateCheckbox = document.getElementById('liveUpdateCheckbox');
+    const suggestionDisplay = document.getElementById('suggestedIrrDisplay');
+    
+    if (!modal || !editBtn) return;
+    
+    // Update display
+    function updateDisplay() {
+      if (suggestionDisplay) {
+        suggestionDisplay.textContent = `Target IRR: ${Math.round(targetIRR * 100)}%`;
+      }
+    }
+    
+    // Open modal
+    editBtn.addEventListener('click', function() {
+      slider.value = Math.round(targetIRR * 100);
+      sliderValue.textContent = Math.round(targetIRR * 100) + '%';
+      installmentInput.value = installmentCount;
+      liveUpdateCheckbox.checked = liveUpdateEnabled;
+      modal.style.display = 'flex';
+    });
+    
+    // Close modal
+    function closeModal() {
+      modal.style.display = 'none';
+    }
+    
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    
+    // Click outside modal to close
+    modal.addEventListener('click', function(e) {
+      if (e.target === modal) closeModal();
+    });
+    
+    // Slider input
+    slider.addEventListener('input', function() {
+      const value = this.value;
+      sliderValue.textContent = value + '%';
+      if (liveUpdateCheckbox.checked) {
+        targetIRR = parseFloat(value) / 100;
+        updateDisplay();
+        if (showSuggestions) {
+          generateAndUpdateSuggestions();
+        }
+      }
+    });
+    
+    // Installment count input
+    installmentInput.addEventListener('input', function() {
+      if (liveUpdateCheckbox.checked) {
+        installmentCount = parseInt(this.value) || 12;
+        if (showSuggestions) {
+          generateAndUpdateSuggestions();
+        }
+      }
+    });
+    
+    // Apply settings
+    applyBtn.addEventListener('click', function() {
+      targetIRR = parseFloat(slider.value) / 100;
+      installmentCount = parseInt(installmentInput.value) || 12;
+      liveUpdateEnabled = liveUpdateCheckbox.checked;
+      updateDisplay();
+      if (showSuggestions) {
+        generateAndUpdateSuggestions();
+      }
+      closeModal();
+    });
+    
+    // Initialize display
+    updateDisplay();
+  }
+
+  // -------------------- ENHANCED SUGGESTION ALGORITHM --------------------
+  function computeEnhancedSuggestedRepayments({investment, targetIRR, installmentCount, filteredWeeks, investmentWeekIndex, openingBalance, cashflow}) {
+    if (!filteredWeeks || !filteredWeeks.length || targetIRR <= 0 || installmentCount <= 0) {
+      return { suggestedRepayments: [], achievedIRR: null };
+    }
+
+    const totalWeeks = filteredWeeks.length;
+    const suggestedArray = new Array(totalWeeks).fill(0);
+    
+    // Find investment index in filtered weeks
+    const investmentIndex = filteredWeeks.indexOf(investmentWeekIndex);
+    if (investmentIndex === -1) {
+      // If investment week not found, start from week 0
+      const remainingWeeks = totalWeeks - 1;
+      if (remainingWeeks <= 0) return { suggestedRepayments: suggestedArray, achievedIRR: null };
+      
+      // Calculate repayment schedule based on installment count
+      const actualInstallments = Math.min(installmentCount, remainingWeeks);
+      const targetReturn = investment * (1 + targetIRR);
+      const baseRepayment = targetReturn / actualInstallments;
+      
+      // Distribute repayments evenly across the timeline
+      const weeksBetweenInstallments = Math.floor(remainingWeeks / actualInstallments);
+      
+      for (let i = 0; i < actualInstallments; i++) {
+        const weekIndex = Math.min(1 + i * weeksBetweenInstallments, totalWeeks - 1);
+        suggestedArray[weekIndex] = baseRepayment;
+      }
+      
+      // Calculate achieved IRR
+      const cashflows = [-investment, ...suggestedArray.slice(1)];
+      const achievedIRR = calculateIRR(cashflows);
+      
+      return {
+        suggestedRepayments: suggestedArray,
+        achievedIRR: achievedIRR
+      };
+    }
+    
+    const remainingWeeks = totalWeeks - investmentIndex - 1;
+    if (remainingWeeks <= 0) return { suggestedRepayments: suggestedArray, achievedIRR: null };
+    
+    // Calculate repayment schedule based on installment count
+    const actualInstallments = Math.min(installmentCount, remainingWeeks);
+    const weeksBetweenInstallments = Math.floor(remainingWeeks / actualInstallments);
+    
+    // Calculate base repayment amount to achieve target IRR
+    // Using compound interest: FV = PV * (1 + r)^n
+    const targetReturn = investment * (1 + targetIRR);
+    const baseRepayment = targetReturn / actualInstallments;
+    
+    // Distribute repayments across installment weeks
+    let installmentIndex = 0;
+    for (let i = investmentIndex + 1; i < totalWeeks && installmentIndex < actualInstallments; i++) {
+      const weeksFromInvestment = i - investmentIndex;
+      if (weeksFromInvestment % Math.max(1, weeksBetweenInstallments) === 0 || i === totalWeeks - 1) {
+        suggestedArray[i] = baseRepayment;
+        installmentIndex++;
+      }
+    }
+    
+    // Validate bank balance constraint
+    if (cashflow && cashflow.income && cashflow.expenditure) {
+      const validatedRepayments = validateBankBalanceConstraint(suggestedArray, cashflow, openingBalance, filteredWeeks, investmentIndex);
+      if (validatedRepayments) {
+        // Calculate achieved IRR for validated repayments
+        const cashflows = [-investment, ...validatedRepayments.slice(investmentIndex + 1)];
+        const achievedIRR = calculateIRR(cashflows);
+        
+        return {
+          suggestedRepayments: validatedRepayments,
+          achievedIRR: achievedIRR
+        };
+      }
+    }
+    
+    // Calculate achieved IRR for the suggested repayments
+    const cashflows = [-investment, ...suggestedArray.slice(investmentIndex + 1)];
+    const achievedIRR = calculateIRR(cashflows);
+    
+    return {
+      suggestedRepayments: suggestedArray,
+      achievedIRR: achievedIRR
+    };
+  }
+  
+  function validateBankBalanceConstraint(suggestedRepayments, cashflow, openingBalance, filteredWeeks, investmentIndex) {
+    const validatedRepayments = [...suggestedRepayments];
+    let rolling = openingBalance;
+    
+    for (let i = 0; i < filteredWeeks.length; i++) {
+      const weekIndex = filteredWeeks[i];
+      const income = cashflow.income[weekIndex] || 0;
+      const expenditure = cashflow.expenditure[weekIndex] || 0;
+      const suggestedRepayment = i > investmentIndex ? validatedRepayments[i] : 0;
+      
+      const projectedBalance = rolling + income - expenditure - suggestedRepayment;
+      
+      // If balance would go negative, reduce the repayment
+      if (projectedBalance < 0 && suggestedRepayment > 0) {
+        const maxRepayment = rolling + income - expenditure;
+        validatedRepayments[i] = Math.max(0, maxRepayment);
+      }
+      
+      // Update rolling balance
+      rolling = rolling + income - expenditure - (i > investmentIndex ? validatedRepayments[i] : 0);
+    }
+    
+    return validatedRepayments;
+  }
+  
+  function generateAndUpdateSuggestions() {
+    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+    const filteredWeeks = getFilteredWeekIndices ? getFilteredWeekIndices() : Array.from({length: 52}, (_, i) => i);
+    const incomeArr = getIncomeArr ? getIncomeArr() : Array(52).fill(0);
+    const expenditureArr = getExpenditureArr ? getExpenditureArr() : Array(52).fill(0);
+    const cashflow = {income: incomeArr, expenditure: expenditureArr};
+    
+    const result = computeEnhancedSuggestedRepayments({
+      investment,
+      targetIRR,
+      installmentCount,
+      filteredWeeks,
+      investmentWeekIndex,
+      openingBalance,
+      cashflow
+    });
+    
+    suggestedRepayments = result.suggestedRepayments;
+    achievedSuggestedIRR = result.achievedIRR;
+    
+    // Re-render the ROI section to show updated suggestions
+    renderRoiSection();
+  }
   function computeSuggestedRepayments({investment, targetIRR, filteredWeeks, investmentWeekIndex, openingBalance, cashflow}) {
     if (!filteredWeeks || !filteredWeeks.length || targetIRR <= 0) {
       return { suggestedRepayments: [], achievedIRR: null };
@@ -980,7 +1202,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // --- ROI TABLE RENDERING (SINGLE TABLE, OVERLAY SUGGESTIONS) ---
   function renderRoiPaybackTable({actualRepayments, suggestedRepayments, filteredWeeks, weekLabels, weekStartDates, investmentWeekIndex}) {
-    if (!actualRepayments || !weekLabels) return '';
+    if (!weekLabels) return '';
+    
+    // Ensure we have some repayments to show - either actual or suggested
+    const hasActualRepayments = actualRepayments && actualRepayments.length > 0 && actualRepayments.some(r => r > 0);
+    const hasSuggestedRepayments = suggestedRepayments && suggestedRepayments.length > 0 && suggestedRepayments.some(r => r > 0);
+    
+    if (!hasActualRepayments && !hasSuggestedRepayments) {
+      return '<p>No repayments to display. Please add repayments or generate suggestions.</p>';
+    }
+    
+    // Use suggested repayments length if actual repayments are empty
+    const repaymentLength = hasActualRepayments ? actualRepayments.length : 
+                            (hasSuggestedRepayments ? suggestedRepayments.length : 0);
     
     const discountRate = parseFloat(document.getElementById('roiInterestInput').value) || 0;
     
@@ -1002,9 +1236,9 @@ document.addEventListener('DOMContentLoaded', function() {
     let cum = 0, discCum = 0;
     let sugCum = 0, sugDiscCum = 0;
     
-    for (let i = 0; i < actualRepayments.length; i++) {
-      const actualRepayment = actualRepayments[i] || 0;
-      const suggestedRepayment = suggestedRepayments ? (suggestedRepayments[i] || 0) : 0;
+    for (let i = 0; i < repaymentLength; i++) {
+      const actualRepayment = (actualRepayments && actualRepayments[i]) || 0;
+      const suggestedRepayment = (suggestedRepayments && suggestedRepayments[investmentWeekIndex + i + 1]) || 0;
       
       cum += actualRepayment;
       if (actualRepayment > 0) {
@@ -1018,20 +1252,23 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
       
-      const weekIndex = investmentWeekIndex + i;
-      const weekLabel = weekLabels[weekIndex] || (i + 1);
+      const weekIndex = investmentWeekIndex + i + 1;
+      const weekLabel = weekLabels[weekIndex] || `Week ${weekIndex + 1}`;
       const weekDate = weekStartDates[weekIndex] ? weekStartDates[weekIndex].toLocaleDateString('en-GB') : '-';
       
-      tableHtml += `
-        <tr ${suggestedRepayments ? 'style="background-color: rgba(33, 150, 243, 0.05);"' : ''}>
-          <td>${weekLabel}</td>
-          <td>${weekDate}</td>
-          <td>€${actualRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-          ${suggestedRepayments ? `<td style="color: #2196f3; font-weight: bold;">€${suggestedRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>` : ''}
-          <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-          <td>€${discCum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
-        </tr>
-      `;
+      // Only show rows that have either actual or suggested repayments
+      if (actualRepayment > 0 || suggestedRepayment > 0) {
+        tableHtml += `
+          <tr ${suggestedRepayments ? 'style="background-color: rgba(33, 150, 243, 0.05);"' : ''}>
+            <td>${weekLabel}</td>
+            <td>${weekDate}</td>
+            <td>€${actualRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+            ${suggestedRepayments ? `<td style="color: #2196f3; font-weight: bold;">€${suggestedRepayment.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>` : ''}
+            <td>€${cum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+            <td>€${discCum.toLocaleString(undefined, {maximumFractionDigits: 2})}</td>
+          </tr>
+        `;
+      }
     }
     
     tableHtml += `</tbody></table>`;
@@ -1268,34 +1505,16 @@ document.getElementById('investmentWeek').addEventListener('change', function() 
 // --- SUGGESTION BUTTON EVENT ---
 document.getElementById('showSuggestedRepaymentsBtn').addEventListener('click', function() {
   if (!showSuggestions) {
-    // Generate suggestions
-    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
-    const targetIRR = 0.20; // Default 20% target IRR
-    const filteredWeeks = getFilteredWeekIndices ? getFilteredWeekIndices() : Array.from({length: 52}, (_, i) => i);
-    const incomeArr = getIncomeArr ? getIncomeArr() : [];
-    const expenditureArr = getExpenditureArr ? getExpenditureArr() : [];
-    const repaymentArr = getRepaymentArr ? getRepaymentArr() : [];
-    const cashflow = {income: incomeArr, expenditure: expenditureArr, repayments: repaymentArr};
-    
-    const result = computeSuggestedRepayments({
-      investment,
-      targetIRR,
-      filteredWeeks,
-      investmentWeekIndex,
-      openingBalance,
-      cashflow
-    });
-    
-    suggestedRepayments = result.suggestedRepayments;
-    achievedSuggestedIRR = result.achievedIRR;
+    // Generate suggestions using current target IRR and installment count
     showSuggestions = true;
     this.textContent = 'Hide Suggested Repayments';
+    generateAndUpdateSuggestions();
   } else {
     // Hide suggestions
     clearRoiSuggestions();
     this.textContent = 'Show Suggested Repayments';
+    renderRoiSection();
   }
-  renderRoiSection();
 });
 
 // --- CLEAR SUGGESTIONS WHEN DATA CHANGES ---
