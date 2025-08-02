@@ -1020,6 +1020,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Find investment index in filtered weeks
     const investmentIndex = filteredWeeks.indexOf(investmentWeekIndex);
+    
     if (investmentIndex === -1) {
       // If investment week not found, start from week 0
       const remainingWeeks = totalWeeks - 1;
@@ -1070,8 +1071,9 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
     
-    // Validate bank balance constraint
-    if (cashflow && cashflow.income && cashflow.expenditure) {
+    // Validate bank balance constraint only if there's meaningful cashflow data
+    if (cashflow && cashflow.income && cashflow.expenditure && 
+        (cashflow.income.some(i => i > 0) || cashflow.expenditure.some(e => e > 0))) {
       const validatedRepayments = validateBankBalanceConstraint(suggestedArray, cashflow, openingBalance, filteredWeeks, investmentIndex);
       if (validatedRepayments) {
         // Calculate achieved IRR for validated repayments
@@ -1123,6 +1125,10 @@ document.addEventListener('DOMContentLoaded', function() {
   function generateAndUpdateSuggestions() {
     const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
     const filteredWeeks = getFilteredWeekIndices ? getFilteredWeekIndices() : Array.from({length: 52}, (_, i) => i);
+    
+    // If no filtered weeks (no data loaded), use default 52-week timeline
+    const actualFilteredWeeks = filteredWeeks.length > 0 ? filteredWeeks : Array.from({length: 52}, (_, i) => i);
+    
     const incomeArr = getIncomeArr ? getIncomeArr() : Array(52).fill(0);
     const expenditureArr = getExpenditureArr ? getExpenditureArr() : Array(52).fill(0);
     const cashflow = {income: incomeArr, expenditure: expenditureArr};
@@ -1131,7 +1137,7 @@ document.addEventListener('DOMContentLoaded', function() {
       investment,
       targetIRR,
       installmentCount,
-      filteredWeeks,
+      filteredWeeks: actualFilteredWeeks,
       investmentWeekIndex,
       openingBalance,
       cashflow
