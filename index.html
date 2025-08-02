@@ -166,6 +166,7 @@
           <button id="showSuggestedRepaymentsBtn" style="background:#2196f3; color:white; border:none; padding:6px 14px; border-radius:4px;">Show Suggested Repayments</button>
         </div>
       </div>
+      <div id="roiWarningAlert" style="margin-bottom: 1em;"></div>
       <div id="roiSummary" style="margin-bottom:1em;"></div>
       <div style="display:flex; gap:2em; flex-wrap:wrap;">
         <div style="flex:2;">
@@ -194,6 +195,10 @@
               <input type="range" id="targetIrrSlider" min="5" max="50" value="20" step="1">
               <span id="targetIrrValue">20%</span>
             </div>
+          </div>
+          <div class="form-group">
+            <label><b>Equivalent NPV:</b></label>
+            <div id="equivalentNpvDisplay" style="font-size: 1.2em; font-weight: bold; color: #1976d2; padding: 8px 0;">€0</div>
           </div>
           <div class="form-group">
             <label for="installmentCountInput"><b>Number of Installments:</b></label>

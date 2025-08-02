@@ -938,14 +938,58 @@ document.addEventListener('DOMContentLoaded', function() {
     const installmentInput = document.getElementById('installmentCountInput');
     const liveUpdateCheckbox = document.getElementById('liveUpdateCheckbox');
     const suggestionDisplay = document.getElementById('suggestedIrrDisplay');
+    const npvDisplay = document.getElementById('equivalentNpvDisplay');
     
     if (!modal || !editBtn) return;
+    
+    // Calculate NPV for given IRR
+    function calculateNPVForIRR(irrRate) {
+      const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+      if (investment <= 0) return 0;
+      
+      // Get current repayments or use default installment calculation
+      const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
+      const repayments = repaymentsFull.slice(investmentWeekIndex);
+      
+      // If no repayments exist, calculate equivalent repayments for target IRR
+      if (repayments.length === 0 || repayments.every(r => r === 0)) {
+        // Calculate what total repayments would be needed for this IRR
+        const targetReturn = investment * (1 + irrRate);
+        return targetReturn - investment; // This is the NPV equivalent
+      }
+      
+      // Use actual repayments with date-based discounting
+      const cashflows = [-investment, ...repayments];
+      const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+      
+      for (let i = 1; i < cashflows.length; i++) {
+        let idx = investmentWeekIndex + i;
+        cashflowDates[i] = weekStartDates[idx] || new Date();
+      }
+      
+      // Use the global npv_date function if available, otherwise simple calculation
+      if (typeof npv_date === 'function') {
+        return npv_date(irrRate, cashflows, cashflowDates);
+      } else {
+        // Simple NPV calculation without dates
+        return cashflows.reduce((acc, val, i) => acc + val / Math.pow(1 + irrRate, i), 0);
+      }
+    }
+    
+    // Update NPV display
+    function updateNPVDisplay() {
+      if (!npvDisplay) return;
+      const irrRate = parseFloat(slider.value) / 100;
+      const npvValue = calculateNPVForIRR(irrRate);
+      npvDisplay.textContent = `€${npvValue.toLocaleString(undefined, {maximumFractionDigits: 2})}`;
+    }
     
     // Update display
     function updateDisplay() {
       if (suggestionDisplay) {
         suggestionDisplay.textContent = `Target IRR: ${Math.round(targetIRR * 100)}%`;
       }
+      updateNPVDisplay();
     }
     
     // Open modal
@@ -954,6 +998,7 @@ document.addEventListener('DOMContentLoaded', function() {
       sliderValue.textContent = Math.round(targetIRR * 100) + '%';
       installmentInput.value = installmentCount;
       liveUpdateCheckbox.checked = liveUpdateEnabled;
+      updateNPVDisplay(); // Initialize NPV display
       modal.style.display = 'flex';
     });
     
@@ -974,6 +1019,7 @@ document.addEventListener('DOMContentLoaded', function() {
     slider.addEventListener('input', function() {
       const value = this.value;
       sliderValue.textContent = value + '%';
+      updateNPVDisplay(); // Update NPV live as slider changes
       if (liveUpdateCheckbox.checked) {
         targetIRR = parseFloat(value) / 100;
         updateDisplay();
@@ -1381,12 +1427,18 @@ function renderRoiSection() {
   }
 
   let badge = '';
-  if (irrVal > 0.15) badge = '<span class="badge badge-success">Attractive ROI</span>';
-  else if (irrVal > 0.08) badge = '<span class="badge badge-warning">Moderate ROI</span>';
-  else if (!isNaN(irrVal)) badge = '<span class="badge badge-danger">Low ROI</span>';
+  if (irrVal > 0.15) badge = '<div class="alert alert-success" style="margin-bottom: 1em;"><strong>Attractive ROI</strong> - This investment shows excellent returns</div>';
+  else if (irrVal > 0.08) badge = '<div class="alert alert-warning" style="margin-bottom: 1em;"><strong>Moderate ROI</strong> - This investment shows reasonable returns</div>';
+  else if (!isNaN(irrVal)) badge = '<div class="alert alert-danger" style="margin-bottom: 1em;"><strong>Low ROI</strong> - This investment shows poor returns</div>';
   else badge = '';
 
-  document.getElementById('roiSummary').innerHTML = summary + badge;
+  // Update the prominent warning display
+  const warningElement = document.getElementById('roiWarningAlert');
+  if (warningElement) {
+    warningElement.innerHTML = badge;
+  }
+
+  document.getElementById('roiSummary').innerHTML = summary;
   document.getElementById('roiPaybackTableWrap').innerHTML = tableHtml;
 
   // Charts
@@ -1494,19 +1546,79 @@ function renderRoiCharts(investment, repayments) {
 document.getElementById('roiInvestmentInput').addEventListener('input', function() {
   clearRoiSuggestions();
   renderRoiSection();
+  // Update NPV display in modal if open
+  const modal = document.getElementById('targetIrrModal');
+  const npvDisplay = document.getElementById('equivalentNpvDisplay');
+  if (modal && modal.style.display !== 'none' && npvDisplay) {
+    const slider = document.getElementById('targetIrrSlider');
+    if (slider) {
+      const irrRate = parseFloat(slider.value) / 100;
+      const investment = parseFloat(this.value) || 0;
+      if (investment <= 0) {
+        npvDisplay.textContent = '€0';
+      } else {
+        // Update NPV display
+        updateNPVDisplayInModal();
+      }
+    }
+  }
 });
 document.getElementById('roiInterestInput').addEventListener('input', function() {
   clearRoiSuggestions();
   renderRoiSection();
+  // Update NPV display in modal if open
+  updateNPVDisplayInModal();
 });
 document.getElementById('refreshRoiBtn').addEventListener('click', function() {
   clearRoiSuggestions();
   renderRoiSection();
+  updateNPVDisplayInModal();
 });
 document.getElementById('investmentWeek').addEventListener('change', function() {
   clearRoiSuggestions();
   renderRoiSection();
+  updateNPVDisplayInModal();
 });
+
+// Helper function to update NPV display when modal is open
+function updateNPVDisplayInModal() {
+  const modal = document.getElementById('targetIrrModal');
+  const npvDisplay = document.getElementById('equivalentNpvDisplay');
+  const slider = document.getElementById('targetIrrSlider');
+  
+  if (modal && modal.style.display !== 'none' && npvDisplay && slider) {
+    const irrRate = parseFloat(slider.value) / 100;
+    const investment = parseFloat(document.getElementById('roiInvestmentInput').value) || 0;
+    
+    if (investment <= 0) {
+      npvDisplay.textContent = '€0';
+      return;
+    }
+    
+    // Calculate NPV for current IRR
+    const repaymentsFull = getRepaymentArr ? getRepaymentArr() : [];
+    const repayments = repaymentsFull.slice(investmentWeekIndex);
+    
+    if (repayments.length === 0 || repayments.every(r => r === 0)) {
+      // Calculate what total repayments would be needed for this IRR
+      const targetReturn = investment * (1 + irrRate);
+      const npvValue = targetReturn - investment;
+      npvDisplay.textContent = `€${npvValue.toLocaleString(undefined, {maximumFractionDigits: 2})}`;
+    } else {
+      // Use actual repayments with date-based discounting
+      const cashflows = [-investment, ...repayments];
+      const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+      
+      for (let i = 1; i < cashflows.length; i++) {
+        let idx = investmentWeekIndex + i;
+        cashflowDates[i] = weekStartDates[idx] || new Date();
+      }
+      
+      const npvValue = npv_date(irrRate, cashflows, cashflowDates);
+      npvDisplay.textContent = `€${npvValue.toLocaleString(undefined, {maximumFractionDigits: 2})}`;
+    }
+  }
+}
 
 // --- SUGGESTION BUTTON EVENT ---
 document.getElementById('showSuggestedRepaymentsBtn').addEventListener('click', function() {
@@ -1542,6 +1654,9 @@ function clearRoiSuggestions() {
     renderSummaryTab();
     renderRoiSection();
     renderTornadoChart();
+    
+    // Update NPV display in modal if open
+    updateNPVDisplayInModal();
   }
   updateAllTabs();
 });
