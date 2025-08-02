@@ -160,7 +160,11 @@
 
         <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
         
-        <button id="showSuggestedRepaymentsBtn" style="background:#2196f3; color:white; border:none; padding:6px 14px; border-radius:4px; margin-left:10px;">Show Suggested Repayments</button>
+        <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+          <span id="suggestedIrrDisplay" style="font-weight:bold; color:#1976d2; margin-right:8px;">Target IRR: 20%</span>
+          <button id="editTargetIrrBtn" style="background:#ff9800; color:white; border:none; padding:6px 14px; border-radius:4px;">Edit Target IRR/NPV</button>
+          <button id="showSuggestedRepaymentsBtn" style="background:#2196f3; color:white; border:none; padding:6px 14px; border-radius:4px;">Show Suggested Repayments</button>
+        </div>
       </div>
       <div id="roiSummary" style="margin-bottom:1em;"></div>
       <div style="display:flex; gap:2em; flex-wrap:wrap;">
@@ -175,6 +179,38 @@
         </div>
       </div>
     </section>
+    
+    <!-- Target IRR/NPV Modal -->
+    <div id="targetIrrModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Edit Target IRR/NPV Settings</h3>
+          <button class="modal-close" id="closeIrrModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="targetIrrSlider"><b>Target IRR (%):</b></label>
+            <div class="slider-container">
+              <input type="range" id="targetIrrSlider" min="5" max="50" value="20" step="1">
+              <span id="targetIrrValue">20%</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="installmentCountInput"><b>Number of Installments:</b></label>
+            <input type="number" id="installmentCountInput" min="1" max="52" value="12" style="width:80px;">
+          </div>
+          <div class="form-group">
+            <input type="checkbox" id="liveUpdateCheckbox" checked>
+            <label for="liveUpdateCheckbox">Live update suggestions as I adjust settings</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="applyIrrSettings" style="background:#4caf50; color:white; border:none; padding:8px 16px; border-radius:4px;">Apply Settings</button>
+          <button id="cancelIrrSettings" style="background:#757575; color:white; border:none; padding:8px 16px; border-radius:4px;">Cancel</button>
+        </div>
+      </div>
+    </div>
+    
     <section id="summary" class="tab-content">
       <h2>Summary Report</h2>
       <div class="kpi-cards">
