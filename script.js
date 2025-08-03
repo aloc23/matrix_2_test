@@ -1402,7 +1402,7 @@ function renderRoiSection() {
     return cashflows.reduce((acc, val, i) => {
       if (!dateArr[i]) return acc;
       let days = (dateArr[i] - baseDate) / msPerDay;
-      let years = days / 365.25;
+      let years = days / 365;
       return acc + val / Math.pow(1 + rate, years);
     }, 0);
   }
