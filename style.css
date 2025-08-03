@@ -262,6 +262,24 @@ tr:hover {
   margin-top: 7px;
   display: inline-block;
 }
+
+.alert-success {
+  background: #e7f6ed;
+  color: #43a047;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 4px solid #43a047;
+  font-weight: 500;
+}
+
+.alert-danger {
+  background: #ffeaea;
+  color: #c62828;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border-left: 4px solid #c62828;
+  font-weight: 500;
+}
 .collapsible-week-filter {
   margin-top: 20px;
   margin-bottom: 12px;
