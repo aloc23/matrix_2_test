@@ -1070,7 +1070,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // -------------------- ENHANCED SUGGESTION ALGORITHM --------------------
-  function computeEnhancedSuggestedRepayments({investment, targetIRR, installmentCount, filteredWeeks, investmentWeekIndex, openingBalance, cashflow}) {
+  function computeEnhancedSuggestedRepayments({investment, targetIRR, installmentCount, filteredWeeks, investmentWeekIndex, openingBalance, cashflow, weekStartDates}) {
     if (!filteredWeeks || !filteredWeeks.length || targetIRR <= 0 || installmentCount <= 0) {
       return { suggestedRepayments: [], achievedIRR: null };
     }
@@ -1099,9 +1099,17 @@ document.addEventListener('DOMContentLoaded', function() {
         suggestedArray[weekIndex] = baseRepayment;
       }
       
-      // Calculate achieved IRR
+      // Calculate achieved IRR using XIRR with actual dates for accurate annualized return
       const cashflows = [-investment, ...suggestedArray.slice(1)];
-      const achievedIRR = calculateIRR(cashflows);
+      const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+      
+      // Build dates for cash flows from investment week onwards
+      for (let i = 1; i < cashflows.length; i++) {
+        let weekIdx = investmentWeekIndex + i;
+        cashflowDates[i] = weekStartDates[weekIdx] || new Date(2025, 0, 1 + weekIdx * 7);
+      }
+      
+      const achievedIRR = calculateIRR(cashflows, cashflowDates);
       
       return {
         suggestedRepayments: suggestedArray,
@@ -1136,9 +1144,17 @@ document.addEventListener('DOMContentLoaded', function() {
         (cashflow.income.some(i => i > 0) || cashflow.expenditure.some(e => e > 0))) {
       const validatedRepayments = validateBankBalanceConstraint(suggestedArray, cashflow, openingBalance, filteredWeeks, investmentIndex);
       if (validatedRepayments) {
-        // Calculate achieved IRR for validated repayments
+        // Calculate achieved IRR for validated repayments using XIRR with actual dates
         const cashflows = [-investment, ...validatedRepayments.slice(investmentIndex + 1)];
-        const achievedIRR = calculateIRR(cashflows);
+        const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+        
+        // Build dates for cash flows from investment week onwards
+        for (let i = 1; i < cashflows.length; i++) {
+          let weekIdx = investmentWeekIndex + i;
+          cashflowDates[i] = weekStartDates[weekIdx] || new Date(2025, 0, 1 + weekIdx * 7);
+        }
+        
+        const achievedIRR = calculateIRR(cashflows, cashflowDates);
         
         return {
           suggestedRepayments: validatedRepayments,
@@ -1147,9 +1163,17 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }
     
-    // Calculate achieved IRR for the suggested repayments
+    // Calculate achieved IRR for the suggested repayments using XIRR with actual dates  
     const cashflows = [-investment, ...suggestedArray.slice(investmentIndex + 1)];
-    const achievedIRR = calculateIRR(cashflows);
+    const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+    
+    // Build dates for cash flows from investment week onwards
+    for (let i = 1; i < cashflows.length; i++) {
+      let weekIdx = investmentWeekIndex + i;
+      cashflowDates[i] = weekStartDates[weekIdx] || new Date(2025, 0, 1 + weekIdx * 7);
+    }
+    
+    const achievedIRR = calculateIRR(cashflows, cashflowDates);
     
     return {
       suggestedRepayments: suggestedArray,
@@ -1200,7 +1224,8 @@ document.addEventListener('DOMContentLoaded', function() {
       filteredWeeks: actualFilteredWeeks,
       investmentWeekIndex,
       openingBalance,
-      cashflow
+      cashflow,
+      weekStartDates
     });
     
     suggestedRepayments = result.suggestedRepayments;
@@ -1209,7 +1234,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Re-render the ROI section to show updated suggestions
     renderRoiSection();
   }
-  function computeSuggestedRepayments({investment, targetIRR, filteredWeeks, investmentWeekIndex, openingBalance, cashflow}) {
+  function computeSuggestedRepayments({investment, targetIRR, filteredWeeks, investmentWeekIndex, openingBalance, cashflow, weekStartDates}) {
     if (!filteredWeeks || !filteredWeeks.length || targetIRR <= 0) {
       return { suggestedRepayments: [], achievedIRR: null };
     }
@@ -1236,9 +1261,17 @@ document.addEventListener('DOMContentLoaded', function() {
       suggestedArray[i] = weeklyRepayment;
     }
     
-    // Calculate achieved IRR for the suggested repayments
+    // Calculate achieved IRR for the suggested repayments using XIRR with actual dates
     const cashflows = [-investment, ...suggestedArray.slice(investmentIndex + 1)];
-    const achievedIRR = calculateIRR(cashflows);
+    const cashflowDates = [weekStartDates[investmentWeekIndex] || new Date()];
+    
+    // Build dates for cash flows from investment week onwards
+    for (let i = 1; i < cashflows.length; i++) {
+      let weekIdx = investmentWeekIndex + i;
+      cashflowDates[i] = weekStartDates[weekIdx] || new Date(2025, 0, 1 + weekIdx * 7);
+    }
+    
+    const achievedIRR = calculateIRR(cashflows, cashflowDates);
     
     return {
       suggestedRepayments: suggestedArray,
@@ -1246,7 +1279,24 @@ document.addEventListener('DOMContentLoaded', function() {
     };
   }
 
-  function calculateIRR(cashflows) {
+  /**
+   * Calculate IRR using XIRR logic for irregular cash flow schedules
+   * This function replaces the previous calculateIRR to ensure accurate 
+   * annualized returns based on actual cash flow dates.
+   * 
+   * @param {Array} cashflows - Array of cash flow values
+   * @param {Array} dates - Optional array of dates for XIRR calculation
+   * @returns {number} Annualized IRR or NaN if calculation fails
+   */
+  function calculateIRR(cashflows, dates = null) {
+    if (!cashflows || cashflows.length < 2) return NaN;
+    
+    // If dates are provided, use XIRR for accurate date-based calculation
+    if (dates && dates.length === cashflows.length) {
+      return xirr(cashflows, dates);
+    }
+    
+    // Fallback to standard IRR for evenly spaced periods (legacy compatibility)
     function npv(rate, cashflows) {
       if (!cashflows.length) return 0;
       return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
@@ -1383,6 +1433,8 @@ function renderRoiSection() {
     if (!cashflows.length) return 0;
     return cashflows.reduce((acc, val, i) => acc + val/Math.pow(1+rate, i), 0);
   }
+  
+  // Legacy IRR function - kept for compatibility but replaced by XIRR for irregular schedules
   function irr(cashflows, guess=0.1) {
     let rate = guess, epsilon = 1e-6, maxIter = 100;
     for (let iter=0; iter<maxIter; iter++) {
@@ -1395,6 +1447,57 @@ function renderRoiSection() {
       rate = newRate;
     }
     return NaN;
+  }
+
+  /**
+   * XIRR - Extended Internal Rate of Return calculation for irregular cash flow dates
+   * This function calculates annualized IRR based on actual cash flow dates rather than 
+   * assuming evenly spaced periods. Essential for accurate ROI calculations with irregular
+   * repayment schedules.
+   * 
+   * @param {Array} cashflows - Array of cash flow values (negative for outflows, positive for inflows)
+   * @param {Array} dates - Array of Date objects corresponding to each cash flow
+   * @param {number} guess - Initial guess for the rate (default: 0.1 or 10%)
+   * @returns {number} Annualized IRR or NaN if calculation fails
+   */
+  function xirr(cashflows, dates, guess = 0.1) {
+    if (!cashflows || !dates || cashflows.length !== dates.length || cashflows.length < 2) {
+      return NaN;
+    }
+    
+    // Helper function to calculate NPV using actual dates
+    function xnpv(rate, cashflows, dates) {
+      const msPerDay = 24 * 3600 * 1000;
+      const baseDate = dates[0];
+      return cashflows.reduce((acc, val, i) => {
+        if (!dates[i]) return acc;
+        let days = (dates[i] - baseDate) / msPerDay;
+        let years = days / 365.25; // Use 365.25 for more accurate annualization
+        return acc + val / Math.pow(1 + rate, years);
+      }, 0);
+    }
+    
+    // Newton-Raphson method to find the rate where XNPV = 0
+    let rate = guess;
+    const epsilon = 1e-6;
+    const maxIter = 100;
+    
+    for (let iter = 0; iter < maxIter; iter++) {
+      let npv0 = xnpv(rate, cashflows, dates);
+      let npv1 = xnpv(rate + epsilon, cashflows, dates);
+      let derivative = (npv1 - npv0) / epsilon;
+      
+      if (Math.abs(derivative) < 1e-10) break; // Avoid division by very small numbers
+      
+      let newRate = rate - npv0 / derivative;
+      
+      if (!isFinite(newRate)) break;
+      if (Math.abs(newRate - rate) < 1e-7) return newRate; // Convergence achieved
+      
+      rate = newRate;
+    }
+    
+    return NaN; // Failed to converge
   }
   function npv_date(rate, cashflows, dateArr) {
     const msPerDay = 24 * 3600 * 1000;
@@ -1409,7 +1512,12 @@ function renderRoiSection() {
 
   let npvVal = (discountRate && cashflows.length > 1 && cashflowDates[0]) ?
     npv_date(discountRate / 100, cashflows, cashflowDates) : null;
-  let irrVal = (cashflows.length > 1) ? irr(cashflows) : NaN;
+  
+  // Use XIRR for accurate annualized IRR calculation with actual cash flow dates
+  // XIRR replaces standard IRR to handle irregular repayment schedules properly.
+  // This ensures accurate annualized returns regardless of payment timing irregularities.
+  let irrVal = (cashflows.length > 1 && cashflowDates.length > 1 && cashflowDates[0]) ? 
+    xirr(cashflows, cashflowDates) : NaN;
 
   let discCum = 0, payback = null;
   for (let i = 1; i < cashflows.length; i++) {
