@@ -1280,6 +1280,57 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   /**
+   * XIRR - Extended Internal Rate of Return calculation for irregular cash flow dates
+   * This function calculates annualized IRR based on actual cash flow dates rather than 
+   * assuming evenly spaced periods. Essential for accurate ROI calculations with irregular
+   * repayment schedules.
+   * 
+   * @param {Array} cashflows - Array of cash flow values (negative for outflows, positive for inflows)
+   * @param {Array} dates - Array of Date objects corresponding to each cash flow
+   * @param {number} guess - Initial guess for the rate (default: 0.1 or 10%)
+   * @returns {number} Annualized IRR or NaN if calculation fails
+   */
+  function xirr(cashflows, dates, guess = 0.1) {
+    if (!cashflows || !dates || cashflows.length !== dates.length || cashflows.length < 2) {
+      return NaN;
+    }
+    
+    // Helper function to calculate NPV using actual dates
+    function xnpv(rate, cashflows, dates) {
+      const msPerDay = 24 * 3600 * 1000;
+      const baseDate = dates[0];
+      return cashflows.reduce((acc, val, i) => {
+        if (!dates[i]) return acc;
+        let days = (dates[i] - baseDate) / msPerDay;
+        let years = days / 365.25; // Use 365.25 for more accurate annualization
+        return acc + val / Math.pow(1 + rate, years);
+      }, 0);
+    }
+    
+    // Newton-Raphson method to find the rate where XNPV = 0
+    let rate = guess;
+    const epsilon = 1e-6;
+    const maxIter = 100;
+    
+    for (let iter = 0; iter < maxIter; iter++) {
+      let npv0 = xnpv(rate, cashflows, dates);
+      let npv1 = xnpv(rate + epsilon, cashflows, dates);
+      let derivative = (npv1 - npv0) / epsilon;
+      
+      if (Math.abs(derivative) < 1e-10) break; // Avoid division by very small numbers
+      
+      let newRate = rate - npv0 / derivative;
+      
+      if (!isFinite(newRate)) break;
+      if (Math.abs(newRate - rate) < 1e-7) return newRate; // Convergence achieved
+      
+      rate = newRate;
+    }
+    
+    return NaN; // Failed to converge
+  }
+
+  /**
    * Calculate IRR using XIRR logic for irregular cash flow schedules
    * This function replaces the previous calculateIRR to ensure accurate 
    * annualized returns based on actual cash flow dates.
@@ -1449,56 +1500,6 @@ function renderRoiSection() {
     return NaN;
   }
 
-  /**
-   * XIRR - Extended Internal Rate of Return calculation for irregular cash flow dates
-   * This function calculates annualized IRR based on actual cash flow dates rather than 
-   * assuming evenly spaced periods. Essential for accurate ROI calculations with irregular
-   * repayment schedules.
-   * 
-   * @param {Array} cashflows - Array of cash flow values (negative for outflows, positive for inflows)
-   * @param {Array} dates - Array of Date objects corresponding to each cash flow
-   * @param {number} guess - Initial guess for the rate (default: 0.1 or 10%)
-   * @returns {number} Annualized IRR or NaN if calculation fails
-   */
-  function xirr(cashflows, dates, guess = 0.1) {
-    if (!cashflows || !dates || cashflows.length !== dates.length || cashflows.length < 2) {
-      return NaN;
-    }
-    
-    // Helper function to calculate NPV using actual dates
-    function xnpv(rate, cashflows, dates) {
-      const msPerDay = 24 * 3600 * 1000;
-      const baseDate = dates[0];
-      return cashflows.reduce((acc, val, i) => {
-        if (!dates[i]) return acc;
-        let days = (dates[i] - baseDate) / msPerDay;
-        let years = days / 365.25; // Use 365.25 for more accurate annualization
-        return acc + val / Math.pow(1 + rate, years);
-      }, 0);
-    }
-    
-    // Newton-Raphson method to find the rate where XNPV = 0
-    let rate = guess;
-    const epsilon = 1e-6;
-    const maxIter = 100;
-    
-    for (let iter = 0; iter < maxIter; iter++) {
-      let npv0 = xnpv(rate, cashflows, dates);
-      let npv1 = xnpv(rate + epsilon, cashflows, dates);
-      let derivative = (npv1 - npv0) / epsilon;
-      
-      if (Math.abs(derivative) < 1e-10) break; // Avoid division by very small numbers
-      
-      let newRate = rate - npv0 / derivative;
-      
-      if (!isFinite(newRate)) break;
-      if (Math.abs(newRate - rate) < 1e-7) return newRate; // Convergence achieved
-      
-      rate = newRate;
-    }
-    
-    return NaN; // Failed to converge
-  }
   function npv_date(rate, cashflows, dateArr) {
     const msPerDay = 24 * 3600 * 1000;
     const baseDate = dateArr[0];
