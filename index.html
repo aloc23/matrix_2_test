@@ -43,8 +43,9 @@
         <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
           <label><input type="radio" name="repaymentType" value="week" checked> Specific Week</label>
           <select id="weekSelect"></select>
+          <label style="font-weight:bold;">Date:</label>
+          <input type="date" id="repaymentDate" style="width:140px;">
           <label><input type="radio" name="repaymentType" value="date"> Explicit Date</label>
-          <input type="date" id="repaymentDate" disabled style="width:140px;">
           <label><input type="radio" name="repaymentType" value="frequency"> Frequency</label>
           <select id="repaymentFrequency" disabled>
             <option value="monthly">Monthly</option>
