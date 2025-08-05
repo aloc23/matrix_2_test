@@ -40,9 +40,11 @@
           <div id="remainingBox">Remaining: €0</div>
         </div>
         <h3>Repayment Sensitivity Analysis</h3>
-        <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;">
+        <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
           <label><input type="radio" name="repaymentType" value="week" checked> Specific Week</label>
           <select id="weekSelect"></select>
+          <label><input type="radio" name="repaymentType" value="date"> Explicit Date</label>
+          <input type="date" id="repaymentDate" disabled style="width:140px;">
           <label><input type="radio" name="repaymentType" value="frequency"> Frequency</label>
           <select id="repaymentFrequency" disabled>
             <option value="monthly">Monthly</option>
@@ -159,15 +161,20 @@
         <input type="number" id="roiInterestInput" value="20" style="width:70px; margin-right:1em;">
 
         <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
-        
-        <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+      </div>
+      
+      <!-- Investment Summary & Target IRR Controls Section -->
+      <div class="investment-summary-section" style="display:flex; gap:2em; align-items:flex-start; margin-bottom:1em; padding:12px; border:1px solid #e0e7ef; border-radius:6px; background-color:#f9fbfc;">
+        <div style="flex:1;">
+          <div id="roiWarningAlert" style="margin-bottom: 1em;"></div>
+          <div id="roiSummary"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
           <span id="suggestedIrrDisplay" style="font-weight:bold; color:#1976d2; margin-right:8px;">Target IRR: 20%</span>
           <button id="editTargetIrrBtn" style="background:#ff9800; color:white; border:none; padding:6px 14px; border-radius:4px;">Edit Target IRR/NPV</button>
           <button id="showSuggestedRepaymentsBtn" style="background:#2196f3; color:white; border:none; padding:6px 14px; border-radius:4px;">Show Suggested Repayments</button>
         </div>
       </div>
-      <div id="roiWarningAlert" style="margin-bottom: 1em;"></div>
-      <div id="roiSummary" style="margin-bottom:1em;"></div>
       <div style="display:flex; gap:2em; flex-wrap:wrap;">
         <div style="flex:2;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
