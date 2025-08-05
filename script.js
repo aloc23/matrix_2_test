@@ -105,12 +105,6 @@ document.addEventListener('DOMContentLoaded', function() {
           mappedData = json;
           autoDetectMapping(mappedData);
           mappingConfigured = false;
-          
-          // Initialize first week date to today if not already set
-          if (!window.firstWeekDate) {
-            window.firstWeekDate = new Date();
-          }
-          
           renderMappingPanel(mappedData);
           updateWeekLabels();
           updateAllTabs();
@@ -169,39 +163,6 @@ document.addEventListener('DOMContentLoaded', function() {
       };
     }, 0);
 
-    // First week date input
-    if (weekLabels.length > 0) {
-      let firstWeekDiv = document.createElement('div');
-      firstWeekDiv.style.marginTop = '10px';
-      
-      // Get current first week date or use a default
-      let currentFirstWeekDate = window.firstWeekDate || new Date();
-      let dateString = currentFirstWeekDate.toISOString().split('T')[0];
-      
-      firstWeekDiv.innerHTML = `
-        <label style="display: block; margin-bottom: 5px;">
-          <strong>First Week Start Date:</strong>
-          <input type="date" id="firstWeekDateInput" value="${dateString}" style="width:150px; margin-left: 8px;">
-        </label>
-        <div style="font-size: 0.9em; color: #666; margin-top: 2px;">
-          All subsequent weeks will be calculated as First Week + 7 days × (week number - 1)
-        </div>
-      `;
-      panel.appendChild(firstWeekDiv);
-      
-      setTimeout(() => {
-        let firstWeekInput = document.getElementById('firstWeekDateInput');
-        if (firstWeekInput) {
-          firstWeekInput.onchange = function() {
-            window.firstWeekDate = new Date(firstWeekInput.value);
-            updateWeekLabels();
-            updateAllTabs();
-            renderMappingPanel(allRows);
-          };
-        }
-      }, 0);
-    }
-
     // Reset button for mapping
     const resetBtn = document.createElement('button');
     resetBtn.textContent = "Reset Mapping";
@@ -210,10 +171,6 @@ document.addEventListener('DOMContentLoaded', function() {
       autoDetectMapping(allRows);
       weekCheckboxStates = weekLabels.map(()=>true);
       openingBalance = 0;
-      
-      // Reset first week date to today
-      window.firstWeekDate = new Date();
-      
       renderMappingPanel(allRows);
       updateWeekLabels();
       updateAllTabs();
@@ -397,16 +354,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  function calculateSequentialWeekDates(firstWeekDate, weekCount) {
-    const dates = [];
-    for (let i = 0; i < weekCount; i++) {
-      const weekDate = new Date(firstWeekDate);
-      weekDate.setDate(firstWeekDate.getDate() + (7 * i));
-      dates.push(weekDate);
-    }
-    return dates;
-  }
-
   function populateInvestmentWeekDropdown() {
     const dropdown = document.getElementById('investmentWeek');
     if (!dropdown) return;
@@ -432,13 +379,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     populateWeekDropdown(weekLabels);
 
-    // Calculate week start dates based on user-selected first week date
-    if (window.firstWeekDate && weekLabels.length > 0) {
-      weekStartDates = calculateSequentialWeekDates(window.firstWeekDate, weekLabels.length);
-    } else {
-      // Fallback: ROI week start date integration. Use a default base year (2025) or prompt user for year.
-      weekStartDates = extractWeekStartDates(weekLabels, 2025);
-    }
+    // ROI week start date integration. Use a default base year (2025) or prompt user for year.
+    weekStartDates = extractWeekStartDates(weekLabels, 2025);
     populateInvestmentWeekDropdown();
   }
 
@@ -601,9 +543,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     return schedule;
   }
-  
-  // Make function globally accessible for ROI calculations
-  window.getExplicitRepaymentSchedule = getExplicitRepaymentSchedule;
   function getNetProfitArr(incomeArr, expenditureArr, repaymentArr) {
     return incomeArr.map((inc, i) => (inc || 0) - (expenditureArr[i] || 0) - (repaymentArr[i] || 0));
   }
@@ -2052,7 +1991,7 @@ function renderRoiSection() {
   let actualWeekStartDates = weekStartDates && weekStartDates.length > 0 ? weekStartDates : Array.from({length: 52}, (_, i) => new Date(2025, 0, 1 + i * 7));
   
   // Get explicit repayment schedule for accurate date-based calculations
-  const explicitSchedule = window.getExplicitRepaymentSchedule ? window.getExplicitRepaymentSchedule() : getExplicitRepaymentSchedule();
+  const explicitSchedule = getExplicitRepaymentSchedule();
   
   // Check if we have any explicit date repayments
   const hasExplicitDates = explicitSchedule.some(item => 
