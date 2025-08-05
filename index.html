@@ -40,9 +40,11 @@
           <div id="remainingBox">Remaining: €0</div>
         </div>
         <h3>Repayment Sensitivity Analysis</h3>
-        <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;">
+        <form id="addRepaymentForm" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
           <label><input type="radio" name="repaymentType" value="week" checked> Specific Week</label>
           <select id="weekSelect"></select>
+          <label><input type="radio" name="repaymentType" value="date"> Explicit Date</label>
+          <input type="date" id="repaymentDate" disabled style="width:140px;">
           <label><input type="radio" name="repaymentType" value="frequency"> Frequency</label>
           <select id="repaymentFrequency" disabled>
             <option value="monthly">Monthly</option>
@@ -159,18 +161,26 @@
         <input type="number" id="roiInterestInput" value="20" style="width:70px; margin-right:1em;">
 
         <button id="refreshRoiBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Refresh ROI</button>
-        
-        <div style="display:flex; align-items:center; gap:8px; margin-left:10px;">
+      </div>
+      
+      <!-- Investment Summary & Target IRR Controls Section -->
+      <div class="investment-summary-section" style="display:flex; gap:2em; align-items:flex-start; margin-bottom:1em; padding:12px; border:1px solid #e0e7ef; border-radius:6px; background-color:#f9fbfc;">
+        <div style="flex:1;">
+          <div id="roiWarningAlert" style="margin-bottom: 1em;"></div>
+          <div id="roiSummary"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
           <span id="suggestedIrrDisplay" style="font-weight:bold; color:#1976d2; margin-right:8px;">Target IRR: 20%</span>
           <button id="editTargetIrrBtn" style="background:#ff9800; color:white; border:none; padding:6px 14px; border-radius:4px;">Edit Target IRR/NPV</button>
           <button id="showSuggestedRepaymentsBtn" style="background:#2196f3; color:white; border:none; padding:6px 14px; border-radius:4px;">Show Suggested Repayments</button>
         </div>
       </div>
-      <div id="roiWarningAlert" style="margin-bottom: 1em;"></div>
-      <div id="roiSummary" style="margin-bottom:1em;"></div>
       <div style="display:flex; gap:2em; flex-wrap:wrap;">
         <div style="flex:2;">
-          <h4>Repayment &amp; Payback Table</h4>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h4 style="margin:0;">Repayment &amp; Payback Table</h4>
+            <button id="exportToExcelBtn" style="background:#4caf50; color:white; border:none; padding:6px 14px; border-radius:4px;">Export to Excel</button>
+          </div>
           <div id="roiPaybackTableWrap"></div>
         </div>
         <div style="flex:1; min-width:340px;">
@@ -203,6 +213,17 @@
           <div class="form-group">
             <label for="installmentCountInput"><b>Number of Installments:</b></label>
             <input type="number" id="installmentCountInput" min="1" max="52" value="12" style="width:80px;">
+            <button id="bufferSelectionBtn" type="button" style="background:#ff9800; color:white; border:none; padding:6px 12px; border-radius:4px; margin-left:10px;">Buffer/Gap</button>
+          </div>
+          <div class="form-group">
+            <label><b>Repayment Buffer:</b></label>
+            <div id="bufferSelectionDisplay" style="font-size: 1.1em; color: #1976d2; padding: 4px 0;">None selected</div>
+          </div>
+          <div class="form-group">
+            <label for="firstRepaymentWeekSelect"><b>First Repayment Week:</b></label>
+            <select id="firstRepaymentWeekSelect" style="width:200px;">
+              <option value="">Select week...</option>
+            </select>
           </div>
           <div class="form-group">
             <input type="checkbox" id="liveUpdateCheckbox" checked>
@@ -212,6 +233,58 @@
         <div class="modal-footer">
           <button id="applyIrrSettings" style="background:#4caf50; color:white; border:none; padding:8px 16px; border-radius:4px;">Apply Settings</button>
           <button id="cancelIrrSettings" style="background:#757575; color:white; border:none; padding:8px 16px; border-radius:4px;">Cancel</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Buffer Selection Modal -->
+    <div id="bufferModal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Select Repayment Buffer/Gap</h3>
+          <button class="modal-close" id="closeBufferModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label><b>Choose buffer between repayments:</b></label>
+            <div style="margin-top: 10px;">
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="none" checked style="margin-right: 8px;">
+                None (fastest possible schedule)
+              </label>
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="2weeks" style="margin-right: 8px;">
+                2 weeks gap between repayments
+              </label>
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="1month" style="margin-right: 8px;">
+                1 month gap between repayments
+              </label>
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="2months" style="margin-right: 8px;">
+                2 months gap between repayments
+              </label>
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="quarter" style="margin-right: 8px;">
+                Quarter (3 months) gap between repayments
+              </label>
+              <label style="display: block; margin-bottom: 8px;">
+                <input type="radio" name="bufferOption" value="custom" style="margin-right: 8px;">
+                Custom (advanced)
+              </label>
+            </div>
+          </div>
+          <div id="customBufferSettings" class="form-group" style="display: none; border: 1px solid #e0e7ef; padding: 12px; border-radius: 6px; background: #f9f9f9;">
+            <label for="customBufferWeeks"><b>Custom Buffer (weeks):</b></label>
+            <input type="number" id="customBufferWeeks" min="0" max="52" value="1" style="width:80px;">
+            <div style="margin-top: 8px; font-size: 0.9em; color: #666;">
+              Enter the number of weeks to wait between suggested repayments.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="applyBufferSettings" style="background:#4caf50; color:white; border:none; padding:8px 16px; border-radius:4px;">Apply Buffer</button>
+          <button id="cancelBufferSettings" style="background:#757575; color:white; border:none; padding:8px 16px; border-radius:4px;">Cancel</button>
         </div>
       </div>
     </div>
